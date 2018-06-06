@@ -368,7 +368,8 @@ class ClientHelloGenerator(HandshakeProtocolMessageGenerator):
     """Generator for TLS handshake protocol Client Hello messages."""
 
     def __init__(self, ciphers=None, extensions=None, version=None,
-                 session_id=None, random=None, compression=None, ssl2=False):
+                 session_id=None, random=None, compression=None, ssl2=False,
+                 modifiers=None):
         """Set up the object for generation of Client Hello messages."""
         super(ClientHelloGenerator, self).__init__()
         if ciphers is None:
@@ -384,6 +385,7 @@ class ClientHelloGenerator(HandshakeProtocolMessageGenerator):
         self.random = random
         self.compression = compression
         self.ssl2 = ssl2
+        self.modifiers = modifiers
 
     def _generate_extensions(self, state):
         """Convert extension generators to extension objects."""
@@ -406,6 +408,13 @@ class ClientHelloGenerator(HandshakeProtocolMessageGenerator):
                 extensions.append(TLSExtension().create(ext_id, bytearray(0)))
 
         return extensions
+
+    def _handle_modifiers(self, state, clnt_hello):
+        """Handle processing of the modifiers of the message."""
+        if self.modifiers is None:
+            self.modifiers = []  # TODO psk_binder updater for session tickets
+        for mod in self.modifiers:
+            mod(state, clnt_hello)
 
     def generate(self, state):
         """Create a Client Hello message."""
@@ -437,6 +446,9 @@ class ClientHelloGenerator(HandshakeProtocolMessageGenerator):
                                                    self.ciphers,
                                                    extensions=extensions)
         clnt_hello.compression_methods = self.compression
+
+        self._handle_modifiers(state, clnt_hello)
+
         state.client_version = self.version
 
         self.msg = clnt_hello
@@ -965,7 +977,7 @@ def pad_handshake(generator, size=0, pad_byte=0, pad=None):
     Pad or truncate handshake messages.
 
     Pad or truncate a handshake message by given amount of bytes, use negative
-    to size to truncate.
+    size to truncate.
     """
     def new_generate(state, old_generate=generator.generate):
         """Monkey patch for the generate method of the Handshake generators."""
